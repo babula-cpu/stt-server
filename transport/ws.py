@@ -130,6 +130,7 @@ async def _recv_pump(
     log: Any,
     troubleshoot: TroubleshootCollector,
 ) -> None:
+    overflow_count = 0
     try:
         while True:
             message = await ws.receive()
@@ -142,17 +143,30 @@ async def _recv_pump(
                 try:
                     in_q.put_nowait(pcm_data)
                 except asyncio.QueueFull:
-                    metrics.q_in_overflow_total.inc()
-                    troubleshoot.record_overflow("in")
-                    troubleshoot.record_event("queue.in.overflow")
-                    log.warning("queue.in.overflow", q_size=in_q.qsize())
-                    err = build_error(session.call_id, 1008, "audio queue overflow")
-                    # Use blocking put with timeout to ensure error gets delivered
+                    # Drop oldest frame and enqueue the new one
                     try:
-                        await asyncio.wait_for(out_q.put(err), timeout=2.0)
-                    except (asyncio.TimeoutError, asyncio.QueueFull):
+                        in_q.get_nowait()
+                    except asyncio.QueueEmpty:
                         pass
-                    break
+                    try:
+                        in_q.put_nowait(pcm_data)
+                    except asyncio.QueueFull:
+                        pass
+                    metrics.q_in_overflow_total.inc()
+                    metrics.q_in_frames_dropped_total.inc()
+                    troubleshoot.record_overflow("in")
+                    overflow_count += 1
+                    if overflow_count % 50 == 1:
+                        log.warning("queue.in.drop_oldest", q_size=in_q.qsize(), total_dropped=overflow_count)
+                    if overflow_count >= settings.in_queue_max_drops:
+                        troubleshoot.record_event("queue.in.overflow_limit")
+                        log.error("queue.in.overflow_limit", total_dropped=overflow_count)
+                        err = build_error(session.call_id, 1008, "audio queue overflow")
+                        try:
+                            await asyncio.wait_for(out_q.put(err), timeout=2.0)
+                        except (asyncio.TimeoutError, asyncio.QueueFull):
+                            pass
+                        break
 
             elif "text" in message and message["text"]:
                 try:

@@ -48,6 +48,16 @@ Client ──ws──► _recv_pump (async) ──► janus in_queue ──► r
 - **`protocol/schema.py`** — `ConnParams` validation from query string, message builder functions (`build_ready`, `build_partial`, `build_final`, `build_error`).
 - **`observability/`** — `logging.py` has structlog setup + `TroubleshootCollector` (ring buffer of events emitted on abnormal close). `metrics.py` defines all Prometheus counters/histograms.
 
+## Scaling
+
+The global `_infer_lock` in `backends/qwen3.py` serializes all inference calls because vLLM is not thread-safe. This means a single process handles one inference at a time, which becomes a bottleneck under high concurrency.
+
+**Recommended horizontal scaling approach:**
+- Run multiple **uvicorn worker processes** (`uvicorn app:app --workers N`), each loading an independent model replica
+- **GPU memory planning**: Qwen3-ASR-1.7B in fp16 requires ~3.4 GB per replica. Plan worker count based on available VRAM (e.g., 2-3 workers on a 24 GB GPU)
+- Use a **load balancer** (e.g., nginx with `least_conn`) to distribute WebSocket connections across workers
+- Each worker has its own `_asr_model` singleton and `_infer_lock`, so inference is parallelized across workers
+
 ## Key Patterns
 
 - **Async/sync bridge**: FastAPI async on the outside, sync vLLM inference in a thread, connected by janus queues. The worker reads `in_q_sync` and writes `out_q_sync`.

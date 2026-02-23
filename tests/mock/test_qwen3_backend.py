@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from backends.base import ASRResult
+from config import settings
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -218,9 +219,9 @@ class TestConfigureAndClose:
         # init_streaming_state should have been called with language="Chinese"
         mock_asr.init_streaming_state.assert_called_with(
             language="Chinese",
-            chunk_size_sec=2.0,
-            unfixed_chunk_num=2,
-            unfixed_token_num=5,
+            chunk_size_sec=settings.streaming_chunk_size_sec,
+            unfixed_chunk_num=settings.streaming_unfixed_chunk_num,
+            unfixed_token_num=settings.streaming_unfixed_token_num,
         )
 
     def test_configure_auto_language(self):
@@ -229,9 +230,9 @@ class TestConfigureAndClose:
             backend = _make_backend(mock_asr, language="auto")
         mock_asr.init_streaming_state.assert_called_with(
             language=None,
-            chunk_size_sec=2.0,
-            unfixed_chunk_num=2,
-            unfixed_token_num=5,
+            chunk_size_sec=settings.streaming_chunk_size_sec,
+            unfixed_chunk_num=settings.streaming_unfixed_chunk_num,
+            unfixed_token_num=settings.streaming_unfixed_token_num,
         )
 
     def test_close_is_noop(self):

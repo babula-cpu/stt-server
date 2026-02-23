@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-import struct
 import threading
 from pathlib import Path
 
@@ -115,28 +113,25 @@ class Qwen3Backend:
         )
 
     def push_audio(self, pcm_data: bytes) -> None:
-        # RMS energy via struct (no numpy needed for VAD)
+        import numpy as np
+
         n_samples = len(pcm_data) // 2
         if n_samples == 0:
             return
-        samples = struct.unpack(f"<{n_samples}h", pcm_data[: n_samples * 2])
-        rms = math.sqrt(sum(s * s for s in samples) / n_samples)
+
+        # Single numpy pass: parse int16, compute RMS, convert to float32
+        samples_i16 = np.frombuffer(pcm_data[: n_samples * 2], dtype=np.int16)
+        rms = np.sqrt(np.mean(samples_i16.astype(np.int64) ** 2))
 
         chunk_ms = n_samples / self._sample_rate * 1000
-
         if rms >= settings.vad_threshold:
             self._in_speech = True
             self._silence_ms_accum = 0.0
         elif self._in_speech:
             self._silence_ms_accum += chunk_ms
 
-        # Feed audio to qwen-asr streaming
-        import numpy as np
-
-        audio = (
-            np.frombuffer(pcm_data[: n_samples * 2], dtype=np.int16).astype(np.float32)
-            / 32768.0
-        )
+        # Reuse parsed int16 for float32 conversion
+        audio = samples_i16.astype(np.float32) / 32768.0
         asr = _get_asr_model()
         with _infer_lock:
             asr.streaming_transcribe(audio, self._state)

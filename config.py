@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Queue sizes
     in_queue_size: int = 200
     out_queue_size: int = 50
+    in_queue_max_drops: int = 500  # cumulative dropped frames before disconnect (500×20ms=10s)
 
     # File upload limits
     max_upload_bytes: int = 100 * 1024 * 1024  # 100MB

@@ -11,7 +11,9 @@ out_events_total = Counter("stt_out_events_total", "Total events sent", ["type"]
 q_in_depth = Gauge("stt_q_in_depth", "Current input queue depth")
 q_out_depth = Gauge("stt_q_out_depth", "Current output queue depth")
 q_in_overflow_total = Counter("stt_q_in_overflow_total", "Input queue overflow count")
+q_in_frames_dropped_total = Counter("stt_q_in_frames_dropped_total", "Input queue frames dropped (oldest discarded)")
 q_out_overflow_total = Counter("stt_q_out_overflow_total", "Output queue overflow count")
+partials_dropped_backpressure = Counter("stt_partials_dropped_backpressure", "Partial results dropped due to output queue backpressure")
 
 # Inference
 asr_infer_ms = Histogram("stt_asr_infer_ms", "ASR inference duration in ms", buckets=[10, 25, 50, 100, 250, 500, 1000, 2500, 5000])

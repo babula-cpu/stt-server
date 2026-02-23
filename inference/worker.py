@@ -19,6 +19,10 @@ STOP = object()
 
 logger = logging.getLogger(__name__)
 
+_POLL_FAST_S = 0.05   # 50ms — active
+_POLL_SLOW_S = 0.20   # 200ms — idle
+_IDLE_THRESHOLD = 5   # consecutive empty cycles before switching to slow
+
 
 def run_worker(
     *,
@@ -33,11 +37,23 @@ def run_worker(
 
     should_stop = False
 
-    def _emit(event: dict) -> None:
+    def _out_q_pressure() -> float:
+        try:
+            return out_q_sync.qsize() / out_q_sync.maxsize
+        except (AttributeError, ZeroDivisionError):
+            return 0.0
+
+    def _emit(event: dict, *, is_partial: bool = False) -> None:
         nonlocal should_stop
+        if is_partial and _out_q_pressure() >= 0.8:
+            metrics.partials_dropped_backpressure.inc()
+            return
         try:
             out_q_sync.put_nowait(event)
         except queue.Full:
+            if is_partial:
+                metrics.partials_dropped_backpressure.inc()
+                return
             metrics.q_out_overflow_total.inc()
             troubleshoot.record_overflow("out")
             should_stop = True
@@ -64,12 +80,20 @@ def run_worker(
         log.info("ws.send.final", segment_seq=session.segment_seq, reason=reason, **timing)
         session.increment_segment()
 
+    poll_timeout = _POLL_FAST_S
+    idle_cycles = 0
+
     try:
         while not should_stop:
             # Drain from input queue
             try:
-                item = in_q_sync.get(timeout=0.05)
+                item = in_q_sync.get(timeout=poll_timeout)
+                idle_cycles = 0
+                poll_timeout = _POLL_FAST_S
             except queue.Empty:
+                idle_cycles += 1
+                if idle_cycles >= _IDLE_THRESHOLD:
+                    poll_timeout = _POLL_SLOW_S
                 # No items — check endpoint / partial
                 if backend.detect_endpoint():
                     t0 = time.monotonic()
@@ -89,7 +113,7 @@ def run_worker(
                         troubleshoot.record_infer(infer_ms)
                         troubleshoot.record_event("ws.send.partial")
                         event = build_partial(session.call_id, session.segment_seq, result.text)
-                        _emit(event)
+                        _emit(event, is_partial=True)
                         metrics.out_events_total.labels(type="partial").inc()
                         session.record_partial()
                         log.info("ws.send.partial", segment_seq=session.segment_seq, text_len=len(result.text))
@@ -141,7 +165,7 @@ def run_worker(
                     troubleshoot.record_infer(infer_ms)
                     troubleshoot.record_event("ws.send.partial")
                     event = build_partial(session.call_id, session.segment_seq, result.text)
-                    _emit(event)
+                    _emit(event, is_partial=True)
                     metrics.out_events_total.labels(type="partial").inc()
                     session.record_partial()
 
