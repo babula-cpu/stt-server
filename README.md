@@ -25,8 +25,11 @@ WebSocket Client
 - **Async I/O** for WebSocket recv/send via FastAPI
 - **Sync worker thread** for inference (bridged with janus queues)
 - **Pluggable backends** via `ASRBackend` protocol
-- **Energy-based VAD** for utterance endpoint detection
+- **Energy-based VAD** for utterance endpoint detection (numpy-based RMS)
 - **Prometheus metrics** at `/metrics` and health check at `/health`
+- **Adaptive polling** (50ms active, 200ms idle) for CPU efficiency
+- **Partial backpressure** (drops partials when output queue >80%)
+- **Drop-oldest overflow handling** for queue overflow protection
 
 ## Backends
 
@@ -129,19 +132,25 @@ All settings use the `STT_` env prefix:
 | `STT_HOST` | `0.0.0.0` | Server bind host |
 | `STT_PORT` | `8000` | Server bind port |
 | `STT_IN_QUEUE_SIZE` | `200` | Input queue capacity |
+| `STT_IN_QUEUE_MAX_DROPS` | `500` | Max input queue drops before error |
 | `STT_OUT_QUEUE_SIZE` | `50` | Output queue capacity |
 | `STT_MAX_UPLOAD_BYTES` | `104857600` | Max upload size (100MB) |
 | `STT_VLLM_MODEL` | `Qwen/Qwen3-ASR-1.7B` | vLLM model name |
-| `STT_VLLM_GPU_MEMORY` | `0.8` | GPU memory utilization (0-1) |
+| `STT_VLLM_GPU_MEMORY` | `0.7` | GPU memory utilization (0-1) |
 | `STT_VLLM_MAX_TOKENS` | `512` | Max output tokens |
+| `STT_VLLM_MAX_INFERENCE_BATCH_SIZE` | `32` | Max batch size for inference |
 | `STT_VAD_THRESHOLD` | `300` | RMS energy threshold for speech |
-| `STT_VAD_SILENCE_MS` | `700` | Silence duration to trigger endpoint |
+| `STT_VAD_SILENCE_MS` | `500` | Silence duration to trigger endpoint |
+| `STT_STREAMING_CHUNK_SIZE_SEC` | `0.5` | Streaming chunk size in seconds |
 
 ## Testing
 
 ```bash
-# Run all tests (uses mock backend)
-STT_BACKEND=mock pytest tests/ -v
+# Run mock tests (no GPU needed)
+STT_BACKEND=mock pytest tests/mock/ -v
+
+# Run qwen3 tests (requires CUDA)
+STT_BACKEND=qwen3 pytest tests/qwen3/ -v
 ```
 
 ## Project Structure
